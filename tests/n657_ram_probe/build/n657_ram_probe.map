@@ -1,0 +1,90 @@
+
+There are no discarded input sections
+
+Memory Configuration
+
+Name             Origin             Length             Attributes
+DTCM             0x20000000         0x00040000         xrw
+*default*        0x00000000         0xffffffff
+
+Linker script and memory map
+
+                0x20040000                        _estack = (ORIGIN (DTCM) + LENGTH (DTCM))
+
+.isr_vector     0x20000000       0x40
+                0x20000000                        . = ALIGN (0x100)
+ *(.isr_vector)
+ .isr_vector    0x20000000       0x40 /var/folders/z8/_w_m4qj92dv3z73pb2ttrm880000gn/T//ccRwJBIK.o
+                0x20000000                g_pfnVectors
+                0x20000040                        . = ALIGN (0x4)
+
+.text           0x20000040      0x124
+                0x20000040                        . = ALIGN (0x4)
+ *(.text*)
+ .text          0x20000040      0x114 /var/folders/z8/_w_m4qj92dv3z73pb2ttrm880000gn/T//ccRwJBIK.o
+                0x20000040                Default_Handler
+                0x20000054                HardFault_Handler
+                0x20000074                Reset_Handler
+                0x200000d8                reset_main
+ *(.rodata*)
+ .rodata        0x20000154       0x10 /var/folders/z8/_w_m4qj92dv3z73pb2ttrm880000gn/T//ccRwJBIK.o
+                0x20000164                        . = ALIGN (0x4)
+                0x20000164                        _etext = .
+                0x20000164                        _sidata = LOADADDR (.data)
+
+.glue_7         0x20000164        0x0
+ .glue_7        0x20000164        0x0 linker stubs
+
+.glue_7t        0x20000164        0x0
+ .glue_7t       0x20000164        0x0 linker stubs
+
+.vfp11_veneer   0x20000164        0x0
+ .vfp11_veneer  0x20000164        0x0 linker stubs
+
+.v4_bx          0x20000164        0x0
+ .v4_bx         0x20000164        0x0 linker stubs
+
+.iplt           0x20000164        0x0
+ .iplt          0x20000164        0x0 /var/folders/z8/_w_m4qj92dv3z73pb2ttrm880000gn/T//ccRwJBIK.o
+
+.rel.dyn        0x20000164        0x0
+ .rel.iplt      0x20000164        0x0 /var/folders/z8/_w_m4qj92dv3z73pb2ttrm880000gn/T//ccRwJBIK.o
+
+.data           0x20000164        0x0
+                0x20000164                        . = ALIGN (0x4)
+                0x20000164                        _sdata = .
+ *(.data*)
+ .data          0x20000164        0x0 /var/folders/z8/_w_m4qj92dv3z73pb2ttrm880000gn/T//ccRwJBIK.o
+                0x20000164                        . = ALIGN (0x4)
+                0x20000164                        _edata = .
+
+.igot.plt       0x20000164        0x0
+ .igot.plt      0x20000164        0x0 /var/folders/z8/_w_m4qj92dv3z73pb2ttrm880000gn/T//ccRwJBIK.o
+
+.bss            0x20000164       0x1c
+                0x20000168                        . = ALIGN (0x8)
+ *fill*         0x20000164        0x4 
+                0x20000168                        _sbss = .
+ *(.bss*)
+ .bss           0x20000168       0x18 /var/folders/z8/_w_m4qj92dv3z73pb2ttrm880000gn/T//ccRwJBIK.o
+                0x20000168                g_stage
+                0x2000016c                g_fault_cfsr
+                0x20000170                g_fault_hfsr
+                0x20000174                g_fault_bfar
+                0x20000178                g_result_3_5
+                0x2000017c                g_result_4_0
+ *(COMMON)
+                0x20000180                        . = ALIGN (0x8)
+                0x20000180                        _ebss = .
+LOAD /var/folders/z8/_w_m4qj92dv3z73pb2ttrm880000gn/T//ccRwJBIK.o
+OUTPUT(tests/n657_ram_probe/build/n657_ram_probe.elf elf32-littlearm)
+LOAD linker stubs
+
+.comment        0x00000000       0x43
+ .comment       0x00000000       0x43 /var/folders/z8/_w_m4qj92dv3z73pb2ttrm880000gn/T//ccRwJBIK.o
+                                 0x44 (size before relaxing)
+
+.ARM.attributes
+                0x00000000       0x36
+ .ARM.attributes
+                0x00000000       0x36 /var/folders/z8/_w_m4qj92dv3z73pb2ttrm880000gn/T//ccRwJBIK.o
