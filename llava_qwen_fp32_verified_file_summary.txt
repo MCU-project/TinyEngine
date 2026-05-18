@@ -1,0 +1,284 @@
+LLaVA/Qwen FP32 Verified File Summary
+====================================
+
+목적
+----
+이 문서는 이번에 점검한 LLaVA/Qwen 스타일 FP32 operator/wrapper 관련 파일을 파일 단위로 정리한 문서이다.
+기존 원본 파일에서 torch와 의미론적으로 어긋나는 부분, 새로 추가한 수정본 파일, 그리고 torch 비교 결과를 함께 적었다.
+
+
+1. 원본에서 핵심 문제가 있었던 파일
+----------------------------------
+
+1) TinyEngine/src/kernels/fp_backward_op/llm_ops_fp.c
+- 역할:
+  기존 FP32 operator 구현 파일.
+- 포함 주요 함수:
+  - argmax_fp
+  - embedding_lookup_fp
+  - repeat_kv_fp
+  - rmsnorm_fp
+  - rotary_embedding_fp
+  - silu_fp
+  - gelu_fp
+  - qkv_attention_fp
+- 문제점:
+  - rotary_embedding_fp:
+    Qwen-style rotate_half 방식이 아니라 인접 pair 회전 방식으로 구현되어 있음.
+    즉 `(0,1), (2,3)` 식 회전이고, Qwen/LLaVA(Qwen 기반)와 의미론이 다름.
+  - gelu_fp:
+    torch default GELU가 아니라 tanh approximation GELU임.
+- torch 비교 관찰:
+  - rmsnorm_fp, silu_fp, repeat_kv_fp, qkv_attention_fp, embedding_lookup_fp, argmax_fp는 잘 맞음.
+  - rotary_embedding_fp는 Qwen-style torch 기준으로 크게 어긋남.
+  - gelu_fp는 torch default와는 차이가 있지만 torch tanh GELU와는 맞음.
+
+
+2) TinyEngine/src/kernels/fp_backward_op/mm_projector_fp.c
+- 역할:
+  기존 mm_projector wrapper.
+  구조는 Linear -> GELU -> Linear.
+- 문제점:
+  - 내부 GELU가 원본 gelu_fp를 사용하므로 torch default GELU와 완전히 같지 않음.
+  - `num_image_tokens * hidden_size`를 uint16_t로 넘겨 큰 shape에서 element count truncation 가능.
+- torch 비교 관찰:
+  - 작은 toy shape에서는 거의 맞을 수 있음.
+  - 큰 shape에서는 실제로 torch와 크게 어긋남.
+
+
+3) TinyEngine/src/kernels/fp_backward_op/qwen_block_fp.c
+- 역할:
+  기존 Qwen decoder block wrapper.
+- 내부 호출:
+  - rmsnorm_fp
+  - linear
+  - rotary_embedding_fp
+  - repeat_kv_fp
+  - qkv_attention_fp
+  - silu_fp
+  - mul
+  - add_fp
+- 문제점:
+  - 내부 RoPE가 원본 rotary_embedding_fp를 타므로 Qwen-style RoPE가 아님.
+  - add_fp, silu_fp, mul 호출 시 길이를 uint16_t로 캐스팅하여 큰 shape에서 일부만 처리될 수 있음.
+- torch 비교 관찰:
+  - block 전체가 Qwen-style torch 기준과 크게 어긋남.
+
+
+2. 새로 추가한 수정본 파일
+-------------------------
+
+4) TinyEngine/src/kernels/fp_backward_op/llm_ops_fp_verified.c
+- 역할:
+  기존 원본을 덮어쓰지 않고 따로 추가한 verified operator 파일.
+- 새로 추가한 함수:
+  - rotary_embedding_qwen_fp
+  - gelu_exact_fp_verified
+- 수정 내용:
+  - rotary_embedding_qwen_fp:
+    Qwen-style rotate_half 의미론으로 구현.
+  - gelu_exact_fp_verified:
+    torch default GELU와 맞는 exact GELU 구현.
+- torch 비교 관찰:
+  - rotary_embedding_qwen_fp는 torch와 매우 잘 맞음.
+  - gelu_exact_fp_verified도 torch와 매우 잘 맞음.
+
+
+5) TinyEngine/src/kernels/fp_backward_op/mm_projector_fp_verified.c
+- 역할:
+  기존 원본을 덮어쓰지 않고 따로 추가한 verified mm_projector wrapper.
+- 새로 추가한 함수:
+  - mm_projector_fp_verified_get_workspace_floats
+  - mm_projector_fp_verified_get_workspace_bytes
+  - mm_projector_fp_verified_run
+- 수정 내용:
+  - exact GELU 사용
+  - 큰 shape에서도 truncation이 없도록 element count를 size_t 기준으로 처리
+- torch 비교 관찰:
+  - small / large shape 모두 torch와 잘 맞음.
+
+
+6) TinyEngine/src/kernels/fp_backward_op/qwen_block_fp_verified.c
+- 역할:
+  기존 원본을 덮어쓰지 않고 따로 추가한 verified Qwen block wrapper.
+- 새로 추가한 함수:
+  - qwen_block_fp_verified_get_workspace_floats
+  - qwen_block_fp_verified_get_workspace_bytes
+  - qwen_block_fp_verified_run
+- 수정 내용:
+  - rotary_embedding_qwen_fp 사용
+  - add/mul/silu를 size_t 기반 verified loop로 처리
+  - 큰 shape에서 uint16_t truncation 제거
+- torch 비교 관찰:
+  - Qwen-style block 기준으로 torch와 수치적으로 잘 맞음.
+
+
+3. 연결용 헤더 파일
+------------------
+
+7) TinyEngine/include/tinyengine_function_fp.h
+- 역할:
+  operator 선언 헤더.
+- 이번에 추가한 선언:
+  - gelu_exact_fp_verified
+  - rotary_embedding_qwen_fp
+- 비고:
+  기존 원본 operator 선언은 유지하고, verified operator 선언만 추가함.
+
+
+8) TinyEngine/include/llava_microbench.h
+- 역할:
+  wrapper 선언 헤더.
+- 이번에 추가한 선언:
+  - qwen_block_fp_verified_get_workspace_floats
+  - qwen_block_fp_verified_get_workspace_bytes
+  - qwen_block_fp_verified_run
+  - mm_projector_fp_verified_get_workspace_floats
+  - mm_projector_fp_verified_get_workspace_bytes
+  - mm_projector_fp_verified_run
+- 비고:
+  기존 원본 wrapper 선언은 유지하고, verified wrapper 선언만 추가함.
+
+
+4. 검증 파일
+-----------
+
+9) tests/llava_qwen_fp32_torch_compare.py
+- 역할:
+  원본 C 구현과 verified C 구현을 각각 shared library로 빌드한 뒤,
+  동일 입력으로 torch와 직접 비교하는 검증 스크립트.
+- 검증 범위:
+  - 원본 operator/wrapper의 mismatch 확인
+  - verified operator/wrapper의 match 확인
+  - 큰 shape에서 truncation 문제가 실제로 드러나는지 확인
+- 최종 상태:
+  - 원본 mismatch 확인 완료
+  - verified 경로 전체 pass 확인 완료
+
+
+5. 이번에 같이 읽거나 링크한 원본 참고 파일
+-----------------------------------------
+
+10) TinyEngine/src/kernels/fp_backward_op/lm_head_last_token_fp.c
+- 역할:
+  last token lm_head wrapper.
+- torch 비교 관찰:
+  잘 맞음.
+
+
+11) TinyEngine/src/kernels/fp_backward_op/kv_cache_fp.c
+- 역할:
+  KV cache append/read helper.
+- torch 비교 관찰:
+  잘 맞음.
+
+
+12) TinyEngine/src/kernels/fp_backward_op/image_text_fusion_fp.c
+- 역할:
+  image/text embedding concat helper.
+- torch 비교 관찰:
+  잘 맞음.
+
+
+13) TinyEngine/src/kernels/fp_backward_op/add_fp.c
+- 역할:
+  기존 add helper.
+- 비고:
+  verified qwen_block에서는 큰 shape truncation 회피를 위해 별도 size_t 기반 add loop를 내부 구현으로 사용함.
+
+
+14) TinyEngine/src/kernels/fp_backward_op/mul_fp.c
+- 역할:
+  기존 mul helper.
+- 비고:
+  verified qwen_block에서는 큰 shape truncation 회피를 위해 별도 size_t 기반 mul loop를 내부 구현으로 사용함.
+
+
+6. torch 비교 결과 요약
+----------------------
+
+원본 mismatch 예시:
+- original.rotary_embedding_fp_vs_qwen_torch = 5.59397030
+- original.mm_projector_fp_large_vs_torch = 165.38484192
+- original.qwen_block_fp_vs_qwen_torch = 2604.47998047
+
+verified match 예시:
+- verified.gelu_exact_fp_verified = 0.00000048
+- verified.rotary_embedding_qwen_fp = 0.00000024
+- verified.mm_projector_fp_verified.small = 0.00000191
+- verified.mm_projector_fp_verified.large = 0.00004578
+- verified.qwen_block_fp_verified.qwen_rope = 0.00082397
+- verified.qwen_block_fp_verified.large_no_rope = 0.00000033
+
+해석:
+- 원본의 큰 diff는 구현 의미론 불일치 또는 uint16_t truncation 문제를 뜻함.
+- verified 쪽 diff는 FP32 누산 순서 차이 수준으로 해석 가능한 범위이며 torch와 잘 맞는 것으로 판단함.
+
+
+7. 원래 값 크기와 비교한 오차 해석
+--------------------------------
+
+절대 오차만 보면 숫자가 커 보일 수 있으므로, torch 기준 출력값 자체의 크기와 같이 봐야 한다.
+아래 수치는 동일 테스트 입력에서 verified 구현과 torch 출력의 크기를 함께 비교한 결과이다.
+
+1) mm_projector_small
+- max_abs_diff = 0.00000095
+- mean_abs_diff = 0.00000027
+- max_ref_abs = 11.52372074
+- mean_ref_abs = 3.40657091
+- max_rel_diff = 0.00000633
+- mean_rel_diff = 0.00000038
+- 해석:
+  출력값 크기 대비 오차가 매우 작다.
+
+2) mm_projector_large
+- max_abs_diff = 0.00003815
+- mean_abs_diff = 0.00000382
+- max_ref_abs = 164.57324219
+- mean_ref_abs = 17.92668724
+- max_rel_diff = 0.01567503
+- mean_rel_diff = 0.00000146
+- 해석:
+  max_rel_diff만 보면 커 보일 수 있으나, 이는 참값이 0에 매우 가까운 일부 위치에서 상대 오차가 커진 경우다.
+  평균 상대 오차와 절대 오차 기준으로는 torch와 매우 잘 맞는다.
+
+3) qwen_block_qwen_rope
+- max_abs_diff = 0.00067139
+- mean_abs_diff = 0.00014006
+- max_ref_abs = 1470.44116211
+- mean_ref_abs = 279.97412109
+- max_rel_diff = 0.00005088
+- mean_rel_diff = 0.00000132
+- 해석:
+  block 전체 출력이 수백~천 단위까지 커지는 상황에서도 오차는 매우 작다.
+  이는 구현 불일치가 아니라 FP32 누산 순서 차이로 해석하는 것이 맞다.
+
+결론:
+- verified 쪽 오차는 절대값 기준으로도 작고, 원래 출력값 스케일과 비교하면 더더욱 작은 수준이다.
+- 따라서 verified 경로에서 관측된 차이는 "수치적 오류"라기보다 "정상적인 FP32 계산 차이"로 보는 것이 맞다.
+- 반대로 원본의 큰 diff는 출력값 스케일과 비교해도 지나치게 커서 실제 구현 오류로 판단된다.
+
+
+8. 최종 결론
+-----------
+
+- 원본에서 실제 문제 파일:
+  - llm_ops_fp.c
+  - mm_projector_fp.c
+  - qwen_block_fp.c
+
+- 새로 추가한 수정본 파일:
+  - llm_ops_fp_verified.c
+  - mm_projector_fp_verified.c
+  - qwen_block_fp_verified.c
+
+- 연결 헤더:
+  - tinyengine_function_fp.h
+  - llava_microbench.h
+
+- 검증 파일:
+  - tests/llava_qwen_fp32_torch_compare.py
+
+- 결론:
+  기존 원본은 torch와 안 맞는 부분이 확인되었고,
+  새로 추가한 verified 구현은 torch 기준으로 수치적으로 맞는 것으로 검증되었다.

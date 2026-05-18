@@ -49,6 +49,21 @@ tinyengine_status_fp qwen_block_fp_run(const qwen_block_fp_params* params,
   float* output_data,
   float* workspace);
 
+size_t qwen_block_fp_verified_get_workspace_floats(const qwen_block_fp_config* config);
+size_t qwen_block_fp_verified_get_workspace_bytes(const qwen_block_fp_config* config);
+
+tinyengine_status_fp qwen_block_fp_verified_run(const qwen_block_fp_params* params,
+                                                const float* input_data,
+                                                float* output_data,
+                                                float* workspace);
+
+tinyengine_status_fp qwen_block_fp_verified_run_checked(const qwen_block_fp_params* params,
+                                                        const float* input_data,
+                                                        float* output_data,
+                                                        float* workspace,
+                                                        size_t workspace_floats,
+                                                        uint32_t rope_table_rows);
+
 typedef struct {
   uint16_t num_image_tokens;
   uint16_t vision_hidden;
@@ -70,6 +85,21 @@ tinyengine_status_fp mm_projector_fp_run(const mm_projector_fp_params* params,
                                          const float* input_data,
                                          float* output_data,
                                          float* workspace);
+
+size_t mm_projector_fp_verified_get_workspace_floats(const mm_projector_fp_config* config);
+size_t mm_projector_fp_verified_get_workspace_bytes(const mm_projector_fp_config* config);
+
+tinyengine_status_fp mm_projector_fp_verified_run(const mm_projector_fp_params* params,
+                                                  const float* input_data,
+                                                  float* output_data,
+                                                  float* workspace);
+
+tinyengine_status_fp mm_projector_fp_verified_run_checked(const mm_projector_fp_params* params,
+                                                          const float* input_data,
+                                                          float* output_data,
+                                                          float* workspace,
+                                                          size_t workspace_floats,
+                                                          bool use_exact_gelu);
 
 typedef struct {
   uint16_t hidden_size;

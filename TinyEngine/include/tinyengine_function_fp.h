@@ -46,6 +46,8 @@ tinyengine_status_fp embedding_lookup_fp(const uint16_t seq_len, const uint16_t 
 
 tinyengine_status_fp gelu_fp(const uint16_t size, const float* input_data, float* output_data);
 
+tinyengine_status_fp gelu_exact_fp_verified(const size_t size, const float* input_data, float* output_data);
+
 tinyengine_status_fp less(const uint16_t size, const float* input1_data,
 		const float* input2_data, bool* output_data);
 
@@ -69,6 +71,11 @@ tinyengine_status_fp rmsnorm_fp(const float* input_data, const float* weight_dat
 		const uint16_t rows, const uint16_t cols, const float eps, float* output_data);
 
 tinyengine_status_fp rotary_embedding_fp(float* query, float* key, const uint16_t seq_len,
+		const uint16_t num_query_heads, const uint16_t num_key_heads, const uint16_t head_dim,
+		const uint32_t* position_ids, const float* cos_table, const float* sin_table,
+		const uint16_t rotary_dim);
+
+tinyengine_status_fp rotary_embedding_qwen_fp(float* query, float* key, const uint16_t seq_len,
 		const uint16_t num_query_heads, const uint16_t num_key_heads, const uint16_t head_dim,
 		const uint32_t* position_ids, const float* cos_table, const float* sin_table,
 		const uint16_t rotary_dim);

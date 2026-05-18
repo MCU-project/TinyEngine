@@ -1,0 +1,79 @@
+[0.000] initConfigParams():  Configuration flags start
+[0.000] initConfigParams():   semihost-console-port          61236
+[0.000] initConfigParams():   semihosting                    "disabled"
+[0.000] initConfigParams():   external-init                  false
+[0.000] initConfigParams():   pend-halt-timeout              -1
+[0.000] initConfigParams():   halt                           false
+[0.000] initConfigParams():   config-file                    ""
+[0.000] initConfigParams():   persistent                     false
+[0.000] initConfigParams():  +log-file                       "/Users/jisun/tinyae/TinyEngine/tests/n657_ram_probe/gdbserver.log"
+[0.000] initConfigParams():  +log-level                      31
+[0.000] initConfigParams():  +port-number                    61235
+[0.000] initConfigParams():  +verbose                        true
+[0.000] initConfigParams():   refresh-delay                  15
+[0.000] initConfigParams():   target-sel                     ""
+[0.000] initConfigParams():   incremental                    false
+[0.000] initConfigParams():   verify                         false
+[0.000] initConfigParams():  +swd                            true
+[0.000] initConfigParams():   swo-port                       61234
+[0.000] initConfigParams():   cpu-clock                      8000000
+[0.000] initConfigParams():   swo-clock-div                  128
+[0.000] initConfigParams():   initialize-reset               false
+[0.000] initConfigParams():   debuggers                      false
+[0.000] initConfigParams():  +serial-number                  "0022002B3234510E37333934"
+[0.000] initConfigParams():   apid                           0
+[0.000] initConfigParams():  +attach                         true
+[0.000] initConfigParams():   shared                         false
+[0.000] initConfigParams():   erase-all                      false
+[0.000] initConfigParams():   memory-map                     ""
+[0.000] initConfigParams():   ext-memory-loaders             false
+[0.000] initConfigParams():   extload_init                   (null)
+[0.000] initConfigParams():   extload                        (null)
+[0.000] initConfigParams():  +stm32cubeprogrammer-path       "/Applications/STM32CubeIDE.app/Contents/Eclipse/plugins/com.st.stm32cube.ide.mcu.externaltools.cubeprogrammer.macos64_2.2.300.202508131133/tools/bin"
+[0.000] initConfigParams():  +temp-path                      "/tmp"
+[0.000] initConfigParams():   preserve-temps                 false
+[0.000] initConfigParams():   frequency                      0
+[0.000] initConfigParams():   licenses                       false
+[0.000] initConfigParams():   ignore-rest                    false
+[0.000] initConfigParams():   version                        false
+[0.000] initConfigParams():   help                           false
+[0.000] initConfigParams():  Configuration flags end
+[0.001] init():  STMicroelectronics ST-LINK GDB server. Version 7.12.0
+Copyright (c) 2025, STMicroelectronics. All rights reserved.
+[0.009] openDevice():  COM frequency = 24000 kHz
+[0.009] openDevice():  Target connection mode: Attach
+[0.011] readFromTarget():  Reading ROM table for AP 0 @0x80000fd0
+[0.013] reset_hw_wtchpt_module():  Hardware watchpoint supported by the target 
+[0.014] initContext():  ST-LINK Firmware version : V3J16M9
+[0.014] initContext():  Device ID: 0x486
+[0.014] initContext():  PC: 0x1
+[0.015] Device_GetStatus():  ST-LINK device status: RUN_MODE
+[0.015] initContext():  ST-LINK detects target voltage = 3.28 V
+[0.016] initContext():  ST-LINK device status: RUN_MODE
+[0.016] initServerContext():  ST-LINK device initialization OK
+[0.016] pollAndNotifyRun():  Stm32Device, pollAndNotify running...
+[0.016] updateState():  SwvSrv state change: 0 -> 1
+[0.016] WaitConnection():  Waiting for connection on port 61236...
+[0.016] WaitConnection():  Waiting for connection on port 61235...
+[26.164] WaitConnection():  Accepted connection on port 61235...
+[26.165] haltOnConnect():  Try halt...
+[28.106] createSession():  Session manager. Fail starting session.
+[28.107] run():  GDB server. Fail create session.
+[28.107] WaitConnection():  Waiting for connection on port 61235...
+[122.451] stop():  Stopping port 61235
+[122.452] WaitConnection():  Received stop for port 61235, not accepting new connections.
+[122.453] deInit():  GdbSrv, deInit entry.
+[122.453] deInit():  GdbSessionManager, deInit entry.
+[122.525] ~GdbSession():  GDB session disposed: 1
+[122.525] deInit():  GdbSessionManager, deInit exit
+[122.525] deInit():  SwvSrv deInit entry
+[122.525] stop():  Stopping port 61236
+[122.593] WaitConnection():  Received stop for port 61236, not accepting new connections.
+[122.593] deInit():  SwvSrv deInit exit
+[122.594] deInit():  SemihostSrv deInit entry
+[122.594] deInit():  SemihostSrv deInit exit
+[122.594] closeDevice():  Stm32Device, closeDevice() entry
+[122.597] pollAndNotifyRun():  Stm32Device, pollAndNotify stopped
+[122.600] closeDevice():  Stm32Device, closeDevice() exit
+[122.600] deInit():  Stm32Device, deInit success
+[122.600] deInit():  GdbSrv, deInit exit.

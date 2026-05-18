@@ -1,0 +1,289 @@
+LLaVA/Qwen FP32 Work Log Summary
+================================
+
+목적
+----
+이 문서는 이번 세션에서 수행한 LLaVA/Qwen 스타일 FP32 operator/wrapper 점검, 수정, torch 수치 검증,
+그리고 STM32N6570-DK 실사용 관점 보강사항까지 한 번에 정리한 작업 로그 요약이다.
+
+
+1. 처음 확인한 대상
+-------------------
+
+기준 문서:
+- llava_qwen_modified_code_map.txt
+
+주요 확인 대상 원본 파일:
+- TinyEngine/src/kernels/fp_backward_op/llm_ops_fp.c
+- TinyEngine/src/kernels/fp_backward_op/mm_projector_fp.c
+- TinyEngine/src/kernels/fp_backward_op/qwen_block_fp.c
+- TinyEngine/src/kernels/fp_backward_op/lm_head_last_token_fp.c
+- TinyEngine/src/kernels/fp_backward_op/kv_cache_fp.c
+- TinyEngine/src/kernels/fp_backward_op/image_text_fusion_fp.c
+
+연결 헤더:
+- TinyEngine/include/tinyengine_function_fp.h
+- TinyEngine/include/llava_microbench.h
+
+벤치/STM32 엔트리:
+- examples/llava_microbench/main.c
+- examples/llava_microbench/main_stm32n6.c
+
+
+2. 원본 코드에서 확인된 문제
+---------------------------
+
+1) RoPE 의미론 오류
+- 파일:
+  TinyEngine/src/kernels/fp_backward_op/llm_ops_fp.c
+- 문제:
+  rotary_embedding_fp가 Qwen-style rotate_half가 아니라 인접 pair 회전 방식으로 구현되어 있었음.
+- 영향:
+  Qwen/LLaVA(Qwen 기반) torch 기준과 의미론이 다름.
+
+2) element count uint16_t truncation
+- 파일:
+  TinyEngine/src/kernels/fp_backward_op/mm_projector_fp.c
+  TinyEngine/src/kernels/fp_backward_op/qwen_block_fp.c
+- 문제:
+  큰 tensor 크기를 uint16_t로 넘겨 일부 element만 처리될 수 있었음.
+- 영향:
+  실제 모델 크기에서 결과가 크게 틀어질 수 있음.
+
+3) GELU 정의 차이
+- 파일:
+  TinyEngine/src/kernels/fp_backward_op/llm_ops_fp.c
+- 문제:
+  gelu_fp는 torch default GELU가 아니라 tanh approximation GELU였음.
+- 영향:
+  torch.nn.functional.gelu() 기본값과 완전히 같지 않음.
+
+
+3. 원본 코드 torch 비교 결과
+---------------------------
+
+원본에서 잘 맞았던 항목:
+- rmsnorm_fp
+- silu_fp
+- repeat_kv_fp
+- qkv_attention_fp
+- embedding_lookup_fp
+- argmax_fp
+- lm_head_last_token_fp
+- kv_cache_fp
+- image_text_fusion_fp
+
+원본에서 틀렸던 항목:
+- original.rotary_embedding_fp_vs_qwen_torch = 5.59397030
+- original.mm_projector_fp_large_vs_torch = 165.38484192
+- original.qwen_block_fp_vs_qwen_torch = 2604.47998047
+
+해석:
+- 이 값들은 정상적인 FP32 수치 오차가 아니라 실제 구현 불일치 수준의 차이임.
+
+
+4. 새로 추가한 수정본 파일
+-------------------------
+
+1) TinyEngine/src/kernels/fp_backward_op/llm_ops_fp_verified.c
+- 추가 함수:
+  - gelu_exact_fp_verified
+  - rotary_embedding_qwen_fp
+- 역할:
+  기존 원본을 덮지 않고, torch/Qwen 기준에 맞는 verified operator 구현 제공.
+
+2) TinyEngine/src/kernels/fp_backward_op/mm_projector_fp_verified.c
+- 추가 함수:
+  - mm_projector_fp_verified_get_workspace_floats
+  - mm_projector_fp_verified_get_workspace_bytes
+  - mm_projector_fp_verified_run
+  - mm_projector_fp_verified_run_checked
+- 역할:
+  exact GELU 또는 fast GELU 분기를 갖는 verified mm_projector wrapper.
+
+3) TinyEngine/src/kernels/fp_backward_op/qwen_block_fp_verified.c
+- 추가 함수:
+  - qwen_block_fp_verified_get_workspace_floats
+  - qwen_block_fp_verified_get_workspace_bytes
+  - qwen_block_fp_verified_run
+  - qwen_block_fp_verified_run_checked
+- 역할:
+  Qwen-style RoPE와 size-safe elementwise path를 갖는 verified Qwen block wrapper.
+
+
+5. 헤더 연결 변경
+----------------
+
+1) TinyEngine/include/tinyengine_function_fp.h
+- 추가 선언:
+  - gelu_exact_fp_verified
+  - rotary_embedding_qwen_fp
+
+2) TinyEngine/include/llava_microbench.h
+- 추가 선언:
+  - qwen_block_fp_verified_get_workspace_floats
+  - qwen_block_fp_verified_get_workspace_bytes
+  - qwen_block_fp_verified_run
+  - qwen_block_fp_verified_run_checked
+  - mm_projector_fp_verified_get_workspace_floats
+  - mm_projector_fp_verified_get_workspace_bytes
+  - mm_projector_fp_verified_run
+  - mm_projector_fp_verified_run_checked
+
+
+6. 수정본에서 적용한 핵심 수정
+------------------------------
+
+1) Qwen-style RoPE 적용
+- rotary_embedding_qwen_fp에서 rotate_half 의미론으로 변경.
+
+2) elementwise truncation 제거
+- qwen_block verified 내부 add/mul/silu를 size_t 기반 loop로 분리.
+- mm_projector verified도 size_t 기반 element count 사용.
+
+3) exact GELU 추가
+- torch default GELU와 맞는 경로 추가.
+
+4) fast GELU 분기 추가
+- STM32용 경로에서 exact GELU 대신 tanh 근사 GELU를 size_t 기반으로 선택 가능하게 추가.
+
+5) checked API 추가
+- workspace 크기 검사 가능
+- rope table row 수 검사 가능
+- position_ids가 rope table 범위를 넘는지 검사 가능
+
+6) attention score workspace 축소
+- qwen_block verified에서 attention score 버퍼를 full seq_len * seq_len이 아니라
+  1 row만 쓰는 streaming 방식으로 축소.
+
+
+7. STM32N6570-DK 관점에서 추가로 반영한 것
+----------------------------------------
+
+변경 파일:
+- examples/llava_microbench/main_stm32n6.c
+
+반영 내용:
+- mm_projector toy path가 mm_projector_fp_verified_run_checked를 타도록 변경
+- STM32 쪽에서는 use_exact_gelu = false로 fast GELU 사용
+- qwen_block toy path가 qwen_block_fp_verified_run_checked를 타도록 변경
+- workspace 크기와 rope row count를 호출 시 함께 넘기도록 변경
+
+의미:
+- STM32N6570-DK용 toy benchmark 경로에서도 더 안전한 verified API를 쓰게 됨.
+
+
+8. 수치 검증 스크립트
+--------------------
+
+검증 파일:
+- tests/llava_qwen_fp32_torch_compare.py
+
+역할:
+- 원본 C와 수정본 C를 각각 shared library로 빌드
+- 같은 입력/가중치를 C와 torch에 넣어 직접 비교
+- 원본 mismatch와 verified match를 동시에 검증
+- checked API의 workspace/rope bounds fail path도 함께 확인
+
+
+9. 최종 verified 수치 검증 결과
+-----------------------------
+
+verified 경로:
+- verified.gelu_exact_fp_verified = 0.00000048
+- verified.rotary_embedding_qwen_fp = 0.00000024
+- verified.mm_projector_fp_verified.small = 0.00000191
+- verified.mm_projector_fp_verified.small_workspace_check = 0.00000000
+- verified.mm_projector_fp_verified.large = 0.00004578
+- verified.qwen_block_fp_verified.qwen_rope = 0.00082397
+- verified.qwen_block_fp_verified.rope_bounds_check = 0.00000000
+- verified.qwen_block_fp_verified.large_no_rope = 0.00000033
+
+최종 메시지:
+- ALL VERIFIED CHECKS PASSED
+
+
+10. 원래 값 스케일과 비교한 오차 해석
+-----------------------------------
+
+verified 경로는 절대 오차만 보면 숫자가 있어 보일 수 있으나, 실제 출력값 스케일과 비교하면 매우 작다.
+
+1) mm_projector_small
+- max_abs_diff = 0.00000095
+- mean_abs_diff = 0.00000027
+- max_ref_abs = 11.52372074
+- mean_ref_abs = 3.40657091
+- max_rel_diff = 0.00000633
+- mean_rel_diff = 0.00000038
+
+2) mm_projector_large
+- max_abs_diff = 0.00003815
+- mean_abs_diff = 0.00000382
+- max_ref_abs = 164.57324219
+- mean_ref_abs = 17.92668724
+- max_rel_diff = 0.01567503
+- mean_rel_diff = 0.00000146
+- 비고:
+  max_rel_diff는 참값이 0에 매우 가까운 일부 위치 영향이라 단독 해석하면 안 됨.
+
+3) qwen_block_qwen_rope
+- max_abs_diff = 0.00067139
+- mean_abs_diff = 0.00014006
+- max_ref_abs = 1470.44116211
+- mean_ref_abs = 279.97412109
+- max_rel_diff = 0.00005088
+- mean_rel_diff = 0.00000132
+
+해석:
+- verified 쪽 차이는 정상적인 FP32 누산 순서 차이로 보는 것이 맞음.
+- 원본의 큰 차이는 실제 구현 오류로 봐야 함.
+
+
+11. STM32N6570-DK 실사용 관점에서 파악한 취약점
+----------------------------------------------
+
+1) exact GELU의 MCU 비용
+- gelu_exact_fp_verified는 erff() 사용
+- 정확도 baseline으로는 좋지만 MCU 실사용 기본 경로로는 무거울 수 있음
+
+2) workspace 총량 문제
+- qwen_block verified는 attention score 버퍼는 줄였지만
+  여전히 seq_len * hidden, seq_len * intermediate 버퍼가 큼
+- 실제 큰 Qwen/LLaVA 크기에서는 여전히 메모리 부담이 큼
+
+3) checked API 이전의 안전성 문제 보완
+- workspace size 검사
+- rope row count 검사
+- position_ids 범위 검사
+를 추가해 런타임 OOB 위험을 줄였음
+
+4) 아직 남은 한계
+- API config 필드 상당수가 uint16_t 기반
+- 실모델 전체를 STM32N6570에서 곧바로 돌릴 수준의 메모리 최적화는 아직 아님
+
+
+12. 이번에 실제로 변경/추가된 파일 목록
+--------------------------------------
+
+새로 추가:
+- TinyEngine/src/kernels/fp_backward_op/llm_ops_fp_verified.c
+- TinyEngine/src/kernels/fp_backward_op/mm_projector_fp_verified.c
+- TinyEngine/src/kernels/fp_backward_op/qwen_block_fp_verified.c
+- tests/llava_qwen_fp32_torch_compare.py
+- llava_qwen_fp32_verified_file_summary.txt
+- llava_qwen_fp32_work_log_summary.txt
+
+수정:
+- TinyEngine/include/tinyengine_function_fp.h
+- TinyEngine/include/llava_microbench.h
+- examples/llava_microbench/main_stm32n6.c
+
+
+13. 최종 결론
+------------
+
+- 원본 코드에는 실제 torch/Qwen 기준 의미론 불일치가 있었음
+- 이를 덮어쓰지 않고 verified C 파일을 새로 추가했음
+- verified 경로는 torch와 수치적으로 맞는 것으로 검증됨
+- STM32N6570-DK toy 경로에도 checked verified API를 연결했음
+- 다만 실제 대형 모델 실사용을 위해서는 추가 메모리 최적화가 더 필요함
