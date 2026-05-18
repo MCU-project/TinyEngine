@@ -32,4 +32,6 @@ tinyengine_status mat_mul_fp(
 			output[m + n * matB_col] = sum;
 		}
 	}
+
+	return STATE_SUCCESS;
 }
