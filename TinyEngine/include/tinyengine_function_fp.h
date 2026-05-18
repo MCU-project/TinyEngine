@@ -35,8 +35,18 @@ typedef enum {
 tinyengine_status_fp add_fp(const uint16_t size, const float* input1_data,
 		const float* input2_data, float* output_data);
 
+tinyengine_status_fp argmax_fp(const uint16_t size, const float* input_data,
+		uint16_t* output_index, float* output_value);
+
 tinyengine_status_fp div_fp(const uint16_t size, const float* input1_data,
 		const float* input2_data, float* output_data);
+
+tinyengine_status_fp embedding_lookup_fp(const uint16_t seq_len, const uint16_t hidden_size,
+		const uint32_t* token_ids, const float* embedding_table, float* output_data);
+
+tinyengine_status_fp gelu_fp(const uint16_t size, const float* input_data, float* output_data);
+
+tinyengine_status_fp gelu_exact_fp_verified(const size_t size, const float* input_data, float* output_data);
 
 tinyengine_status_fp less(const uint16_t size, const float* input1_data,
 		const float* input2_data, bool* output_data);
@@ -48,6 +58,29 @@ tinyengine_status_fp mul(const uint16_t size, const float* input1_data,
 		const float* input2_data, float* output_data);
 
 tinyengine_status_fp negative(const uint16_t size, const float* input1_data, bool* output_data);
+
+tinyengine_status_fp qkv_attention_fp(const float* query, const float* key, const float* value,
+		const uint16_t query_len, const uint16_t key_len, const uint16_t num_heads,
+		const uint16_t head_dim, const bool causal, float* output_data, float* attn_buffer);
+
+tinyengine_status_fp repeat_kv_fp(const float* input_data, const uint16_t seq_len,
+		const uint16_t num_kv_heads, const uint16_t head_dim, const uint16_t n_rep,
+		float* output_data);
+
+tinyengine_status_fp rmsnorm_fp(const float* input_data, const float* weight_data,
+		const uint16_t rows, const uint16_t cols, const float eps, float* output_data);
+
+tinyengine_status_fp rotary_embedding_fp(float* query, float* key, const uint16_t seq_len,
+		const uint16_t num_query_heads, const uint16_t num_key_heads, const uint16_t head_dim,
+		const uint32_t* position_ids, const float* cos_table, const float* sin_table,
+		const uint16_t rotary_dim);
+
+tinyengine_status_fp rotary_embedding_qwen_fp(float* query, float* key, const uint16_t seq_len,
+		const uint16_t num_query_heads, const uint16_t num_key_heads, const uint16_t head_dim,
+		const uint32_t* position_ids, const float* cos_table, const float* sin_table,
+		const uint16_t rotary_dim);
+
+tinyengine_status_fp silu_fp(const uint16_t size, const float* input_data, float* output_data);
 
 tinyengine_status_fp nll_loss(const float* input_data, const uint16_t input_dim, const uint16_t input_depth, 
 		const float* target, const uint16_t target_size, float* output_data);
