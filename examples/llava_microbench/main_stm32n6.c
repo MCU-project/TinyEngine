@@ -316,16 +316,12 @@ static void run_mm_projector_toy(const llava_stm32_toy_config* config) {
 
   start = benchmark_timer_now();
   for (run = 0; run < STM32_TOY_RUNS; ++run) {
-<<<<<<< HEAD
-    status = mm_projector_fp_run(&params, g_mm_input, g_mm_output, g_mm_workspace);
-=======
     status = mm_projector_fp_verified_run_checked(&params,
                                                   g_mm_input,
                                                   g_mm_output,
                                                   g_mm_workspace,
                                                   STM32_TOY_MM_WORKSPACE_FLOATS,
                                                   false);
->>>>>>> 90c944f20586069e40bd7de1588c17c5ebfec8f3
   }
   end = benchmark_timer_now();
 
@@ -489,16 +485,12 @@ static void run_qwen_block_toy(const llava_stm32_toy_config* config) {
 
   start = benchmark_timer_now();
   for (run = 0; run < STM32_TOY_RUNS; ++run) {
-<<<<<<< HEAD
-    status = qwen_block_fp_run(&params, g_qwen_input, g_qwen_output, g_qwen_workspace);
-=======
     status = qwen_block_fp_verified_run_checked(&params,
                                                 g_qwen_input,
                                                 g_qwen_output,
                                                 g_qwen_workspace,
                                                 STM32_TOY_QWEN_WORKSPACE_FLOATS,
                                                 STM32_TOY_SEQ_LEN);
->>>>>>> 90c944f20586069e40bd7de1588c17c5ebfec8f3
   }
   end = benchmark_timer_now();
 
