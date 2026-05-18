@@ -40,4 +40,5 @@ tinyengine_status fully_connected_fp(
 		}
 	}
 
+	return STATE_SUCCESS;
 }

@@ -1,0 +1,451 @@
+LLaVA/Qwen Profiling Framework Modified Code Map
+===============================================
+
+목적
+----
+이 문서는 "원래 TinyEngine 기본 코드"가 아니라, 이번 작업에서 LLaVA/Qwen host-side profiling 및
+STM32N6570-DK bring-up 준비를 위해 추가하거나 수정한 코드의 위치와 역할만 정리한 문서이다.
+
+
+1. FP32 Operator / Wrapper 관련 핵심 코드
+---------------------------------------
+
+1) TinyEngine/include/tinyengine_function_fp.h
+- 역할:
+  FP32 연산 함수 선언부.
+- 이번 작업에서 한 일:
+  LLaVA/Qwen profiling에 필요한 FP32 operator 선언을 추가했다.
+- 주요 추가 선언:
+  - argmax_fp
+  - embedding_lookup_fp
+  - repeat_kv_fp
+  - rmsnorm_fp
+  - rotary_embedding_fp
+  - silu_fp
+  - gelu_fp
+  - qkv_attention_fp
+
+
+2) TinyEngine/include/llava_microbench.h
+- 역할:
+  LLaVA/Qwen microbenchmark wrapper용 config / params / API 선언 헤더.
+- 이번 작업에서 한 일:
+  host benchmark와 STM32 toy benchmark에서 공통으로 쓸 wrapper API를 선언했다.
+- 포함 내용:
+  - qwen_block_fp_config
+  - qwen_block_fp_params
+  - qwen_block_fp_get_workspace_floats
+  - qwen_block_fp_get_workspace_bytes
+  - qwen_block_fp_run
+  - mm_projector_fp_config
+  - mm_projector_fp_params
+  - mm_projector_fp_get_workspace_floats
+  - mm_projector_fp_get_workspace_bytes
+  - mm_projector_fp_run
+  - lm_head_last_token_fp_config
+  - lm_head_last_token_fp_params
+  - lm_head_last_token_fp_get_workspace_floats
+  - lm_head_last_token_fp_get_workspace_bytes
+  - lm_head_last_token_fp_run
+  - kv_cache_fp_config
+  - kv_cache_fp_get_cache_floats
+  - kv_cache_fp_get_cache_bytes
+  - kv_cache_append_fp
+  - kv_cache_read_fp
+  - image_text_fusion_fp_config
+  - image_text_fusion_fp_get_workspace_floats
+  - image_text_fusion_fp_get_workspace_bytes
+  - image_text_fusion_fp_run
+
+
+3) TinyEngine/src/kernels/fp_backward_op/llm_ops_fp.c
+- 역할:
+  LLaVA/Qwen 스타일 decoder/operator path에 필요한 FP32 baseline operator 구현.
+- 이번 작업에서 한 일:
+  TinyEngine에 없던 LLM/VLM용 공통 operator를 새로 구현했다.
+- 구현된 함수:
+  - argmax_fp
+  - embedding_lookup_fp
+  - repeat_kv_fp
+  - rmsnorm_fp
+  - rotary_embedding_fp
+  - silu_fp
+  - gelu_fp
+  - qkv_attention_fp
+- 성격:
+  최적화 커널이 아니라 host/MCU profiling skeleton용 baseline FP32 구현.
+
+
+4) TinyEngine/src/kernels/fp_backward_op/qwen_block_fp.c
+- 역할:
+  Qwen decoder block 1개를 실행하는 wrapper.
+- 이번 작업에서 한 일:
+  TinyEngine operator를 조합해 "Qwen block microbenchmark"용 wrapper를 구현했다.
+- 실행 순서:
+  1. RMSNorm
+  2. Q Linear
+  3. K Linear
+  4. V Linear
+  5. RoPE
+  6. repeat_kv
+  7. GQA attention
+  8. O Linear
+  9. residual add
+  10. RMSNorm
+  11. gate Linear
+  12. up Linear
+  13. SiLU
+  14. gated multiply
+  15. down Linear
+  16. residual add
+- 추가 포인트:
+  - workspace layout 계산 포함
+  - qwen_block_fp_get_workspace_floats / bytes 제공
+  - profiling 목적의 standalone FP32 linear baseline 포함
+
+
+5) TinyEngine/src/kernels/fp_backward_op/mm_projector_fp.c
+- 역할:
+  LLaVA mm_projector path wrapper.
+- 이번 작업에서 한 일:
+  projector를 Linear -> GELU -> Linear 형태로 구현했다.
+- 주요 API:
+  - mm_projector_fp_get_workspace_floats
+  - mm_projector_fp_get_workspace_bytes
+  - mm_projector_fp_run
+
+
+6) TinyEngine/src/kernels/fp_backward_op/lm_head_last_token_fp.c
+- 역할:
+  마지막 token hidden state 1개만 vocab projection하는 wrapper.
+- 이번 작업에서 한 일:
+  full sequence logits가 아니라 last token 1개만 projection하는 benchmark wrapper를 구현했다.
+- 용도:
+  MCU에서 lm_head 비용을 따로 보기 위한 benchmark.
+
+
+7) TinyEngine/src/kernels/fp_backward_op/kv_cache_fp.c
+- 역할:
+  KV cache size / append / read baseline helper.
+- 이번 작업에서 한 일:
+  decoder KV cache 크기 계산과 append/read path를 분리 구현했다.
+- 주요 API:
+  - kv_cache_fp_get_cache_floats
+  - kv_cache_fp_get_cache_bytes
+  - kv_cache_append_fp
+  - kv_cache_read_fp
+
+
+8) TinyEngine/src/kernels/fp_backward_op/image_text_fusion_fp.c
+- 역할:
+  projected image token과 text embedding을 하나의 inputs_embeds로 합치는 helper.
+- 이번 작업에서 한 일:
+  image-text fusion path를 간단한 baseline으로 구현했다.
+- 용도:
+  multimodal token assembly 단계 profiling.
+
+
+2. Host Benchmark Driver / 공통 Helper
+-------------------------------------
+
+9) examples/llava_microbench/main.c
+- 역할:
+  host-side profiling driver.
+- 이번 작업에서 한 일:
+  PC/host 환경에서 operator/wrapper benchmark를 CSV 한 줄씩 출력하도록 정리했다.
+- 현재 포함 benchmark:
+  - rmsnorm_fp
+  - rotary_embedding_fp
+  - repeat_kv_fp
+  - silu_fp
+  - gelu_fp
+  - qkv_attention_fp
+  - embedding_lookup_fp
+  - argmax_fp
+  - mm_projector_fp
+  - lm_head_last_token_fp
+  - kv_cache_size
+  - kv_cache_append_fp
+  - kv_cache_read_fp
+  - image_text_fusion_fp
+  - qwen_block_fp
+- 특징:
+  - CSV header 출력
+  - benchmark entry별 dummy tensor 초기화
+  - checksum 출력
+  - config table 기반 Qwen toy benchmark 실행
+
+
+10) examples/llava_microbench/benchmark_common.h
+- 역할:
+  host용 main.c와 STM32용 main_stm32n6.c에서 같이 쓸 helper 선언 헤더.
+- 이번 작업에서 한 일:
+  공통 초기화/검증/CSV 출력 helper API를 분리 선언했다.
+
+
+11) examples/llava_microbench/benchmark_common.c
+- 역할:
+  benchmark 공통 helper 구현.
+- 이번 작업에서 한 일:
+  다음 helper를 구현했다.
+  - bench_fill_sequence
+  - bench_fill_constant
+  - bench_zero
+  - bench_checksum_fp32
+  - bench_has_nan_or_inf_fp32
+  - bench_fill_u32_sequence
+  - bench_fill_rope_tables
+  - bench_print_csv_header
+  - bench_print_csv_row
+- 특징:
+  - deterministic initialization
+  - printf 기반 CSV 출력
+  - malloc 사용 없음
+
+
+3. STM32N6570-DK Bring-Up 준비 코드
+----------------------------------
+
+12) examples/llava_microbench/benchmark_timer.h
+- 역할:
+  host / STM32 공통 timer interface 헤더.
+- 이번 작업에서 한 일:
+  timer abstraction API를 정의했다.
+- API:
+  - benchmark_timer_init
+  - benchmark_timer_now
+  - benchmark_timer_elapsed_cycles
+  - benchmark_timer_elapsed_ms
+
+
+13) examples/llava_microbench/benchmark_timer_stm32.c
+- 역할:
+  STM32 timer implementation.
+- 이번 작업에서 한 일:
+  STM32N6570-DK bring-up용 timer wrapper를 구현했다.
+- 동작 방식:
+  1. DWT cycle counter 사용 가능하면 우선 사용
+  2. DWT가 안 되면 HAL_GetTick fallback
+  3. host syntax check 환경에서는 clock() fallback
+- 특징:
+  - HAL header가 없는 host build에서도 깨지지 않도록 guarded fallback 적용
+  - SystemCoreClock이 있으면 cycles -> ms 변환에 사용
+
+
+14) examples/llava_microbench/main_stm32n6.c
+- 역할:
+  STM32N6570-DK bring-up 전용 toy microbenchmark entry.
+- 이번 작업에서 한 일:
+  host benchmark와 분리된 STM32 전용 entry를 만들었다.
+- 실행 benchmark:
+  - rmsnorm_fp
+  - gelu_fp
+  - silu_fp
+  - mm_projector_fp
+  - image_text_fusion_fp
+  - qwen_block_fp
+  - lm_head_last_token_fp
+- toy config:
+  - seq_len = 4
+  - hidden_size = 32
+  - intermediate_size = 64
+  - num_heads = 4
+  - num_kv_heads = 2
+  - rotary_dim = 8
+  - head_dim = 8
+  - vision_hidden = 32
+  - num_image_tokens = 4
+  - text_tokens = 4
+  - vocab_size = 128
+  - runs = 10
+- 중요한 정책:
+  - malloc/free 사용 안 함
+  - 모든 large buffer를 static/global로 둠
+  - workspace bytes를 먼저 계산하고 capacity를 넘으면 alloc_fail 출력
+  - checksum과 NaN/Inf 여부 출력
+  - CSV 형식은 host와 최대한 유사하게 유지
+
+
+4. Memory Planning Tool / Config Sweep Tool
+-----------------------------------------
+
+15) tools/estimate_llava_mcu_memory.py
+- 역할:
+  reduced LLaVA-style config의 memory를 host에서 계산하는 estimator.
+- 이번 작업에서 한 일:
+  다음 입력을 받아 memory breakdown을 계산하는 스크립트를 만들었다.
+  - vision_params
+  - vision_tokens
+  - vision_hidden
+  - decoder_layers
+  - hidden_size
+  - num_heads
+  - num_kv_heads
+  - mlp_ratio
+  - text_tokens
+  - vocab_size
+  - dtype_bytes
+- 출력 항목:
+  - vision_weight_MB
+  - projector_weight_MB
+  - decoder_weight_MB
+  - embedding_weight_MB
+  - lm_head_weight_MB
+  - kv_cache_MB
+  - activation_MB
+  - attention_score_MB
+  - total_weight_MB
+  - total_runtime_MB
+- 용도:
+  MCU-friendly shrink 방향을 host에서 먼저 추정.
+
+
+16) tools/sweep_llava_mcu_configs.py
+- 역할:
+  MCU 축소 후보 config sweep 및 feasible filtering.
+- 이번 작업에서 한 일:
+  search space를 순회하며 estimator를 재사용해 memory를 계산하고,
+  budget 조건으로 feasible 여부를 판단해 CSV 파일을 생성하는 스크립트를 만들었다.
+- 생성 파일:
+  - results/mcu_config_sweep.csv
+  - results/mcu_config_feasible.csv
+- reason column:
+  - weight_over_budget
+  - kv_cache_over_budget
+  - activation_over_budget
+  - runtime_over_budget
+
+
+5. 문서 / 정리 파일
+------------------
+
+17) examples/llava_microbench/README.md
+- 역할:
+  examples/llava_microbench 사용 설명 문서.
+- 이번 작업에서 한 일:
+  host benchmark 설명을 정리했고, 이후 STM32 bring-up 준비 내용도 추가했다.
+- 포함 내용:
+  - host build / run 방법
+  - CSV schema
+  - benchmark 목록
+  - memory estimator 설명
+  - MCU config sweep 설명
+  - host benchmark와 STM32 benchmark 차이
+  - STM32 project에 수동으로 넣어야 할 source list
+  - timer wrapper 설명
+  - static buffer 정책
+  - STM32 bring-up success criteria
+
+
+18) LLAVA_QWEN_HOST_MCU_PROFILING.md
+- 역할:
+  전체 LLaVA/Qwen profiling framework와 MCU planning 문서.
+- 이번 작업에서 한 일:
+  host profiling framework 전체 구조를 정리했고,
+  이후 STM32 bring-up addendum도 덧붙였다.
+
+
+19) host_profiling_summary.txt
+- 역할:
+  host profiling framework 중간 요약 문서.
+- 이번 작업에서 한 일:
+  host-side profiling framework 구현 내용을 항목별로 요약 정리했다.
+
+
+20) llava_qwen_modified_code_map.txt
+- 역할:
+  지금 보고 있는 이 파일.
+- 이번 작업에서 한 일:
+  "원래 TinyEngine 기본 코드"와 별도로, 우리가 추가/수정한 코드의 위치와 역할을 따로 정리했다.
+
+
+6. 기존 TinyEngine 코드 중 소규모 수정
+------------------------------------
+
+21) TinyEngine/src/kernels/int_forward_op/fully_connected.c
+- 역할:
+  TinyEngine 기존 fully connected 구현.
+- 이번 작업에서 한 일:
+  return 값이 빠져 있던 부분에 상태 반환을 보완했다.
+
+
+22) TinyEngine/src/kernels/int_forward_op/mat_mul_fp.c
+- 역할:
+  TinyEngine 기존 matmul 관련 코드.
+- 이번 작업에서 한 일:
+  return 값이 빠져 있던 부분에 상태 반환을 보완했다.
+
+
+23) tutorial/inference/Debug/Src/TinyEngine/src/kernels/fp_backward_op/subdir.mk
+- 역할:
+  CubeIDE generated build artifact 쪽 source list.
+- 이번 작업에서 한 일:
+  초기 단계에서 llm_ops_fp.c, qwen_block_fp.c를 보이게 하는 최소 수정이 들어갔다.
+- 주의:
+  자동 생성 파일 성격이므로 영구적인 등록 방식은 아님.
+
+
+7. 결과 파일
+-----------
+
+24) results/mcu_config_sweep.csv
+- 역할:
+  전체 MCU config sweep 결과.
+- 이번 작업에서 한 일:
+  sweep 스크립트 결과를 CSV로 생성했다.
+
+
+25) results/mcu_config_feasible.csv
+- 역할:
+  feasible한 MCU 후보 config만 따로 모은 CSV.
+- 이번 작업에서 한 일:
+  total_weight_MB, total_runtime_MB 기준으로 정렬된 결과를 생성했다.
+
+
+8. 핵심 분류 요약
+----------------
+
+A. TinyEngine 안에 새로 넣은 코드
+- tinyengine_function_fp.h
+- llava_microbench.h
+- llm_ops_fp.c
+- qwen_block_fp.c
+- mm_projector_fp.c
+- lm_head_last_token_fp.c
+- kv_cache_fp.c
+- image_text_fusion_fp.c
+
+B. Host profiling용 코드
+- examples/llava_microbench/main.c
+- benchmark_common.h
+- benchmark_common.c
+
+C. STM32 bring-up 준비용 코드
+- benchmark_timer.h
+- benchmark_timer_stm32.c
+- main_stm32n6.c
+
+D. Planning tool
+- estimate_llava_mcu_memory.py
+- sweep_llava_mcu_configs.py
+
+E. 문서 / 정리
+- README.md
+- LLAVA_QWEN_HOST_MCU_PROFILING.md
+- host_profiling_summary.txt
+- llava_qwen_modified_code_map.txt
+
+
+9. 현재 이 코드들의 의미
+----------------------
+
+지금까지 추가한 코드는 "원본 LLaVA 0.5B 전체를 STM32에 올리는 코드"가 아니다.
+
+현재 의미는 아래와 같다.
+
+1. host에서 LLaVA/Qwen 스타일 operator path를 FP32 기준으로 재현 가능하게 함
+2. Qwen block, projector, lm_head, kv_cache, image-text fusion을 독립 benchmark 가능하게 함
+3. MCU-friendly shrink 후보를 memory estimator와 config sweep으로 사전에 걸러냄
+4. STM32N6570-DK에서 먼저 toy config로 build / flash / printf / timer / checksum / no hard fault를 확인할 수 있게 bring-up entry를 준비함
+
+즉, 이 수정들은 "최종 모델 포팅"이 아니라 "포팅 전 준비 + profiling framework + MCU shrink planning"에 해당한다.
