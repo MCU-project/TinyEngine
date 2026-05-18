@@ -294,6 +294,75 @@ STM32N6570-DK + TinyEngine 위에서 실행할 수 있는 runtime path를 준비
 - memory estimator
 - MCU candidate sweep
 
+## STM32 Bring-Up Addendum
+
+The repository now also contains a dedicated STM32N6570-DK bring-up entry that is separate from the host benchmark driver.
+
+New STM32-oriented files:
+
+- `examples/llava_microbench/benchmark_common.h`
+- `examples/llava_microbench/benchmark_common.c`
+- `examples/llava_microbench/benchmark_timer.h`
+- `examples/llava_microbench/benchmark_timer_stm32.c`
+- `examples/llava_microbench/main_stm32n6.c`
+
+STM32 bring-up benchmark list:
+
+- `rmsnorm_fp`
+- `gelu_fp`
+- `silu_fp`
+- `mm_projector_fp`
+- `image_text_fusion_fp`
+- `qwen_block_fp`
+- `lm_head_last_token_fp`
+
+STM32 toy config:
+
+- `seq_len = 4`
+- `hidden_size = 32`
+- `intermediate_size = 64`
+- `num_heads = 4`
+- `num_kv_heads = 2`
+- `rotary_dim = 8`
+- `head_dim = 8`
+- `vision_hidden = 32`
+- `num_image_tokens = 4`
+- `text_tokens = 4`
+- `vocab_size = 128`
+- `runs = 10`
+
+Timer behavior:
+
+1. use DWT cycle counter when available
+2. otherwise fall back to `HAL_GetTick()`
+3. otherwise use portable host `clock()` for syntax-check builds
+
+Static buffer policy:
+
+- no `malloc`
+- no `free`
+- static/global buffers only
+- explicit workspace capacity checks before wrapper execution
+- print `alloc_fail` on insufficient workspace
+
+Bring-up success still means only:
+
+- build
+- flash
+- `printf`
+- timer output
+- finite checksum
+- `has_nan_or_inf = 0`
+- no hard fault
+
+This still does not mean:
+
+- full `LLaVA-OneVision-Qwen2-0.5B` execution
+- real checkpoint loading
+- quantization
+- Neural-ART integration
+- optimized kernels
+
 다음 단계는 이 host-side framework를 STM32N6570-DK 포팅 준비 단계로 확장하는 것이다.
 
 이를 위해 main_stm32n6.c, benchmark_common.c/h, benchmark_timer.h, benchmark_timer_stm32.c를 추가하고, 작은 toy config를 이용해 STM32N6570-DK에서 operator / wrapper가 실제로 실행되는지 확인한다.

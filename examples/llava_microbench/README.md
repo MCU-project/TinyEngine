@@ -18,6 +18,15 @@ Not included:
 - real LLaVA weight loading
 - accuracy validation against framework outputs
 
+## Host vs STM32
+
+There are now two benchmark entry points:
+
+- `main.c`: host-side profiling driver
+- `main_stm32n6.c`: STM32N6570-DK bring-up toy microbenchmark
+
+The STM32 entry is intentionally limited to board bring-up. It does not try to run original `LLaVA-OneVision-Qwen2-0.5B`, real checkpoint loading, quantization, Neural-ART acceleration, or optimized kernels.
+
 ## Host Build
 
 Windows MinGW example:
@@ -221,3 +230,132 @@ Feasibility budgets:
 - `kv_cache_MB <= 4`
 - `activation_MB + attention_score_MB <= 4`
 - `total_runtime_MB <= 32`
+
+## STM32N6570-DK Bring-Up
+
+`main_stm32n6.c` is meant to be added to a prepared STM32CubeIDE / STM32CubeN6 base project.
+
+### Success Criteria
+
+Bring-up success means:
+
+- build succeeds
+- flash succeeds
+- `printf` output appears
+- timer values are sane
+- checksum is finite
+- `has_nan_or_inf = 0`
+- no hard fault occurs
+
+### STM32 Toy Benchmarks
+
+The STM32 entry runs:
+
+- `rmsnorm_fp`
+- `gelu_fp`
+- `silu_fp`
+- `mm_projector_fp`
+- `image_text_fusion_fp`
+- `qwen_block_fp`
+- `lm_head_last_token_fp`
+
+### Active Toy Config
+
+- `seq_len = 4`
+- `hidden_size = 32`
+- `intermediate_size = 64`
+- `num_heads = 4`
+- `num_kv_heads = 2`
+- `rotary_dim = 8`
+- `head_dim = 8`
+- `vision_hidden = 32`
+- `num_image_tokens = 4`
+- `text_tokens = 4`
+- `vocab_size = 128`
+- `runs = 10`
+
+### Shared Helpers
+
+Added:
+
+- `benchmark_common.h`
+- `benchmark_common.c`
+
+These helpers provide deterministic initialization, zero/constant fill, checksum, `NaN` / `Inf` detection, and CSV printing helpers.
+
+### Timer Wrapper
+
+Added:
+
+- `benchmark_timer.h`
+- `benchmark_timer_stm32.c`
+
+Timer behavior:
+
+- use DWT cycle counter when available
+- otherwise use `HAL_GetTick()` on STM32 HAL builds
+- otherwise use host `clock()` for syntax-check compilation
+
+### Static Buffer Policy
+
+The STM32 entry does not use `malloc` or `free`.
+
+Rules:
+
+- use static/global buffers only
+- use explicit workspace buffers
+- validate workspace requirements before execution
+- print `alloc_fail` when a workspace is too small
+
+### STM32 CSV Format
+
+`main_stm32n6.c` prints:
+
+```text
+benchmark,variant,seq_len,hidden_size,intermediate_size,vision_hidden,num_image_tokens,text_tokens,num_heads,num_kv_heads,rotary_dim,head_dim,vocab_size,runs,workspace_bytes,cycles,latency_ms,checksum,has_nan_or_inf,status
+```
+
+### Minimum STM32 Source List
+
+Add these source files to the STM32 project:
+
+- `examples/llava_microbench/main_stm32n6.c`
+- `examples/llava_microbench/benchmark_common.c`
+- `examples/llava_microbench/benchmark_timer_stm32.c`
+- `TinyEngine/src/kernels/fp_backward_op/llm_ops_fp.c`
+- `TinyEngine/src/kernels/fp_backward_op/mm_projector_fp.c`
+- `TinyEngine/src/kernels/fp_backward_op/qwen_block_fp.c`
+- `TinyEngine/src/kernels/fp_backward_op/lm_head_last_token_fp.c`
+- `TinyEngine/src/kernels/fp_backward_op/kv_cache_fp.c`
+- `TinyEngine/src/kernels/fp_backward_op/image_text_fusion_fp.c`
+- `TinyEngine/src/kernels/fp_backward_op/add_fp.c`
+- `TinyEngine/src/kernels/fp_backward_op/mul_fp.c`
+
+Headers to expose:
+
+- `TinyEngine/include/tinyengine_function_fp.h`
+- `TinyEngine/include/llava_microbench.h`
+- `examples/llava_microbench/benchmark_common.h`
+- `examples/llava_microbench/benchmark_timer.h`
+
+### Host Syntax Check
+
+```powershell
+gcc examples\llava_microbench\main_stm32n6.c `
+  examples\llava_microbench\benchmark_common.c `
+  examples\llava_microbench\benchmark_timer_stm32.c `
+  TinyEngine\src\kernels\fp_backward_op\add_fp.c `
+  TinyEngine\src\kernels\fp_backward_op\image_text_fusion_fp.c `
+  TinyEngine\src\kernels\fp_backward_op\kv_cache_fp.c `
+  TinyEngine\src\kernels\fp_backward_op\llm_ops_fp.c `
+  TinyEngine\src\kernels\fp_backward_op\lm_head_last_token_fp.c `
+  TinyEngine\src\kernels\fp_backward_op\mm_projector_fp.c `
+  TinyEngine\src\kernels\fp_backward_op\mul_fp.c `
+  TinyEngine\src\kernels\fp_backward_op\qwen_block_fp.c `
+  -I TinyEngine\include `
+  -I examples\llava_microbench `
+  -std=c11 -Wall -Wextra -pedantic -lm `
+  -o llava_microbench_stm32_syntax_host.exe
+```
+
+This check only confirms that the STM32 entry is valid C in a non-HAL environment. It is not a substitute for real board execution.
