@@ -553,7 +553,7 @@ static void run_lm_head_last_token_toy(const llava_stm32_toy_config* config) {
                             status == STATE_SUCCESS_fp ? "ok" : "fail");
 }
 
-int main(void) {
+void llava_microbench_stm32n6_run(void) {
   const llava_stm32_toy_config* config = &kToyConfigs[0];
 
   benchmark_timer_init();
@@ -566,6 +566,11 @@ int main(void) {
   run_image_text_fusion_toy(config);
   run_qwen_block_toy(config);
   run_lm_head_last_token_toy(config);
+}
+
+#if defined(LLAVA_MICROBENCH_STANDALONE_MAIN)
+int main(void) {
+  llava_microbench_stm32n6_run();
 
 #if defined(__arm__) || defined(__thumb__)
   for (;;) {
@@ -574,3 +579,4 @@ int main(void) {
   return 0;
 #endif
 }
+#endif

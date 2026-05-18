@@ -27,6 +27,10 @@ There are now two benchmark entry points:
 
 The STM32 entry is intentionally limited to board bring-up. It does not try to run original `LLaVA-OneVision-Qwen2-0.5B`, real checkpoint loading, quantization, Neural-ART acceleration, or optimized kernels.
 
+For STM32CubeIDE integration, `main_stm32n6.c` no longer needs to own the application `main()`. Its default public entry is:
+
+- `void llava_microbench_stm32n6_run(void)`
+
 ## Host Build
 
 Windows MinGW example:
@@ -235,6 +239,20 @@ Feasibility budgets:
 
 `main_stm32n6.c` is meant to be added to a prepared STM32CubeIDE / STM32CubeN6 base project.
 
+### How To Call It From CubeIDE
+
+Keep the CubeIDE-generated `Core/Src/main.c` as the real firmware entry point.
+
+Call the benchmark from the `USER CODE BEGIN 2` section, for example:
+
+```c
+/* USER CODE BEGIN 2 */
+llava_microbench_stm32n6_run();
+/* USER CODE END 2 */
+```
+
+If you want to keep printing only once at boot, call it there and then let the normal CubeIDE main loop continue.
+
 ### Success Criteria
 
 Bring-up success means:
@@ -354,6 +372,7 @@ gcc examples\llava_microbench\main_stm32n6.c `
   TinyEngine\src\kernels\fp_backward_op\qwen_block_fp.c `
   -I TinyEngine\include `
   -I examples\llava_microbench `
+  -DLLAVA_MICROBENCH_STANDALONE_MAIN `
   -std=c11 -Wall -Wextra -pedantic -lm `
   -o llava_microbench_stm32_syntax_host.exe
 ```
